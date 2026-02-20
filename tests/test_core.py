@@ -46,15 +46,22 @@ def test_nash_solver():
 
 
 def test_benchmark():
-    """Test benchmark evaluation."""
+    """Test benchmark evaluation with trials."""
     games = generate_game_batch(5, 2, 2, seed=42)
     llm = DummyLLM(seed=42)
     benchmark = Benchmark(llm)
     
-    results, summary = benchmark.evaluate_games(games)
+    # Setup games
+    games_data = benchmark.setup_games(games)
+    assert len(games_data) == 5
     
-    assert len(results) == 5
+    # Run trials
+    results, summary = benchmark.run_trials(num_trials=10)
+    
+    assert len(results) == 50  # 5 games × 10 trials
     assert summary["num_games"] == 5
+    assert summary["num_trials_per_game"] == 10
+    assert summary["total_trials"] == 50
     assert all(r.nash_gap >= -1e-6 for r in results)  # Nash gap must be non-negative (with small tolerance)
     print("✓ test_benchmark passed")
 

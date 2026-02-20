@@ -15,18 +15,20 @@ def run_benchmark(
     num_games: int = 100,
     num_rows: int = 3,
     num_cols: int = 3,
+    num_trials: int = 100,
     payoff_range: tuple = (-100, 100),
     seed: int = None,
     output_dir: str = "results",
     llm_seed: int = None
 ):
     """
-    Run the benchmark.
+    Run the benchmark with multiple trials per game.
     
     Args:
-        num_games: Number of games to evaluate
+        num_games: Number of games to generate
         num_rows: Number of row player actions
         num_cols: Number of column player actions
+        num_trials: Number of trials per game
         payoff_range: Range of payoff values
         seed: Seed for game generation
         output_dir: Directory to save results
@@ -38,34 +40,46 @@ def run_benchmark(
     print("Initializing LLM interface (using dummy LLM for testing)...")
     llm = DummyLLM(seed=llm_seed, use_pure_actions=True)
     
-    print("Running benchmark...")
+    print("Setting up games and computing Nash equilibria...")
     benchmark = Benchmark(llm)
-    results, summary = benchmark.evaluate_games(games, verbose=True)
+    games_data = benchmark.setup_games(games, verbose=True)
+    
+    print(f"\nRunning {num_trials} trials per game...")
+    trial_results, summary = benchmark.run_trials(num_trials=num_trials, verbose=True)
     
     # Save results
     Path(output_dir).mkdir(exist_ok=True)
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     
-    results_file = Path(output_dir) / f"benchmark_results_{timestamp}.json"
-    summary_file = Path(output_dir) / f"benchmark_summary_{timestamp}.json"
+    # Dataset 1: Game mapping (game_id -> payoff matrix, nash equilibrium)
+    games_file = Path(output_dir) / f"games_{timestamp}.json"
+    games_list = [g.to_dict() for g in games_data]
+    with open(games_file, 'w') as f:
+        json.dump(games_list, f, indent=2)
     
-    # Convert results to JSON-serializable format
-    results_list = [r.to_dict() for r in results]
+    # Dataset 2: Trial results (game_id, trial_id, llm_decision, llm_value, br_value, nash_gap)
+    trials_file = Path(output_dir) / f"trials_{timestamp}.json"
+    trials_list = [r.to_dict() for r in trial_results]
+    with open(trials_file, 'w') as f:
+        json.dump(trials_list, f, indent=2)
     
-    with open(results_file, 'w') as f:
-        json.dump(results_list, f, indent=2)
-    
+    # Summary statistics
+    summary_file = Path(output_dir) / f"summary_{timestamp}.json"
     with open(summary_file, 'w') as f:
         json.dump(summary, f, indent=2)
     
-    print(f"\nResults saved to {results_file}")
-    print(f"Summary saved to {summary_file}")
+    print(f"\nDatasets saved:")
+    print(f"  Games: {games_file}")
+    print(f"  Trials: {trials_file}")
+    print(f"  Summary: {summary_file}")
     
     # Print summary
     print("\n" + "="*60)
     print("BENCHMARK SUMMARY")
     print("="*60)
     print(f"Number of games: {summary['num_games']}")
+    print(f"Trials per game: {summary['num_trials_per_game']}")
+    print(f"Total trials: {summary['total_trials']}")
     print(f"Mean Nash gap: {summary['mean_nash_gap']:.4f}")
     print(f"Median Nash gap: {summary['median_nash_gap']:.4f}")
     print(f"Std Nash gap: {summary['std_nash_gap']:.4f}")
@@ -77,13 +91,14 @@ def run_benchmark(
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Run LLM game theory benchmark")
-    parser.add_argument("--num-games", type=int, default=100, help="Number of games")
-    parser.add_argument("--num-rows", type=int, default=3, help="Number of row actions")
-    parser.add_argument("--num-cols", type=int, default=3, help="Number of column actions")
-    parser.add_argument("--seed", type=int, default=None, help="Random seed")
-    parser.add_argument("--output-dir", type=str, default="results", help="Output directory")
-    parser.add_argument("--llm-seed", type=int, default=None, help="LLM randomness seed")
+    parser = argparse.ArgumentParser(description="Run LLM game theory benchmark with multiple trials")
+    parser.add_argument("--num-games", type=int, default=100, help="Number of games (default: 100)")
+    parser.add_argument("--num-trials", type=int, default=100, help="Number of trials per game (default: 100)")
+    parser.add_argument("--num-rows", type=int, default=3, help="Number of row actions (default: 3)")
+    parser.add_argument("--num-cols", type=int, default=3, help="Number of column actions (default: 3)")
+    parser.add_argument("--seed", type=int, default=None, help="Random seed for game generation")
+    parser.add_argument("--output-dir", type=str, default="results", help="Output directory (default: results)")
+    parser.add_argument("--llm-seed", type=int, default=None, help="Random seed for LLM")
     
     args = parser.parse_args()
     
@@ -91,6 +106,7 @@ if __name__ == "__main__":
         num_games=args.num_games,
         num_rows=args.num_rows,
         num_cols=args.num_cols,
+        num_trials=args.num_trials,
         seed=args.seed,
         output_dir=args.output_dir,
         llm_seed=args.llm_seed
