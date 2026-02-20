@@ -44,8 +44,8 @@ print(f'Test successful! LLM returned: {result}')
 ### 3. Run Full Benchmark
 
 ```bash
-# Single experiment
-python main.py --num-games 100 --num-trials 100 --llm-type together --seed 42
+# Single experiment (combined pure + mixed)
+python main.py --num-games 100 --num-trials 100 --combined --seed 42
 
 # Multiple experiments (for robustness)
 python run_research_benchmark.py
@@ -71,13 +71,15 @@ With 14 parallel workers + Together AI:
 
 ## Output Format
 
-All experiments save three files:
+Combined experiments overwrite the same folder each run:
 
 ```
-results/{exp_name}/
-├── games_{timestamp}.json      # 100 game definitions + Nash equilibria
-├── trials_{timestamp}.json     # 10,000 trial results (game_id, trial_id, decision, gap, etc.)
-└── summary_{timestamp}.json    # Summary statistics
+results/pure_and_mixed_latest/
+├── games.json                  # 100 game definitions + Nash equilibria
+├── trials_pure_actions.json    # Pure action trials
+├── summary_pure_actions.json
+├── trials_mixed_strategy.json  # Mixed strategy trials
+└── summary_mixed_strategy.json
 ```
 
 ## For Publication
@@ -87,16 +89,6 @@ Include in methods section:
 > "We benchmarked LLM game-theoretic reasoning using 100 randomly generated 3×3 zero-sum matrix games, with 100 trials per game. The LLM was queried via Together AI's hosted Llama 3.1 70B model (together.ai). Parallel execution with 14 workers ensured reproducibility and efficiency."
 
 ## Alternatives (if Together AI is unavailable)
-
-### Local Ollama (Free, Privacy-friendly)
-```bash
-ollama serve  # Start in another terminal
-
-python main.py --num-games 100 --num-trials 20 --llm-type ollama --parallel --num-workers 14
-```
-- Slower per game (~10-30s each)
-- Good for development
-- Take ~30-60 minutes for 100×100
 
 ### Groq (Free tier, extremely fast - coming soon)
 ```bash

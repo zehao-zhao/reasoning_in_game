@@ -40,28 +40,24 @@ This project implements a benchmark for evaluating LLM performance in zero-sum m
 pip install -r requirements.txt
 ```
 
-3. (Optional) Install Ollama for local LLM inference:
-   - Download from https://ollama.ai
-   - Pull a model: `ollama pull llama3.1`
-   - Start server: `ollama serve` (in a separate terminal)
-
 ## Quick Start
 
-### Using Ollama (Local LLM)
+### Using Together AI (Hosted Llama 3)
 
-Start Ollama in a separate terminal:
+Set your API key and run a combined benchmark (pure + mixed):
 ```bash
-ollama serve
+export TOGETHER_API_KEY="your_key_here"
+python main.py --num-games 10 --num-trials 10 --combined --seed 42
 ```
 
-Then run the benchmark (uses llama3.1 by default):
-```bash
-python main.py --num-games 10 --num-trials 10 --seed 42
+This writes results to:
+```
+results/pure_and_mixed_latest/
 ```
 
 ### Using Dummy LLM (Random baseline)
 
-For testing without Ollama:
+For quick testing without API calls:
 ```bash
 python main.py --num-games 10 --num-trials 10 --llm-type dummy --seed 42
 ```
@@ -74,16 +70,18 @@ python main.py --num-games 10 --num-trials 10 --llm-type dummy --seed 42
 - `--num-cols`: Number of column player actions (default: 3)
 - `--seed`: Random seed for game generation
 - `--llm-seed`: Random seed for LLM (DummyLLM only)
-- `--llm-type`: LLM backend type: `ollama`, `dummy`, `together`, `openai` (default: `dummy`)
-- `--llm-model`: Specific model name (e.g., `llama3.1`, `llama2`)
+- `--llm-type`: LLM backend type: `dummy`, `together`, `openai` (default: `together`)
+- `--llm-model`: Specific model name (default: Together Llama 3.1 70B Turbo)
 - `--output-dir`: Directory to save results (default: "results")
 - `--parallel`: Enable parallel workers for faster execution (especially useful for network-based LLMs)
 - `--num-workers`: Number of parallel workers (default: 4, max recommended: 8-16)
+- `--combined`: Run both pure action and mixed strategy benchmarks on the same games (writes to `results/pure_and_mixed_latest/`; uses Together AI)
 
 ### Examples
 
-Run 100 games × 100 trials with ollama:
+Run 100 games × 100 trials with Together AI:
 ```bash
+export TOGETHER_API_KEY="your_key_here"
 python main.py --num-games 100 --num-trials 100 --seed 42
 ```
 
@@ -92,8 +90,9 @@ Run smaller experiment with dummy LLM (for testing):
 python main.py --num-games 10 --num-trials 10 --llm-type dummy --seed 42
 ```
 
-Custom game size (2x2 games) with ollama:
+Custom game size (2x2 games) with Together AI:
 ```bash
+export TOGETHER_API_KEY="your_key_here"
 python main.py --num-games 50 --num-trials 50 --num-rows 2 --num-cols 2 --seed 123
 ```
 
@@ -106,7 +105,6 @@ python main.py --num-games 100 --num-trials 100 --llm-type together --parallel -
 **Faster execution tips:**
 - **Reduce trials:** `--num-trials 20` (5x faster)
 - **Use parallelization:** `--parallel --num-workers 8` (best for remote LLMs)
-- **Smaller local model:** `--llm-type ollama --llm-model llama2` (3x faster)
 - **Together AI:** `--llm-type together --parallel` (good balance of speed & accuracy)
 
 ## Benchmark Protocol
@@ -134,18 +132,44 @@ Summary statistics across all games:
 
 ## Output
 
-The benchmark generates three files in the `results/` directory:
+The benchmark writes to the `results/` directory.
 
-1. **games_{timestamp}.json** - Game mapping data (100 entries)
-   - Maps game_id to payoff matrix and Nash equilibria
-   - Use this to look up the actual game for any trial result
+### Combined Benchmark Output (Recommended)
 
-2. **trials_{timestamp}.json** - Trial results (10,000 entries for 100 games × 100 trials)
-   - Contains: game_id, trial_id, llm_decision, llm_value, best_response_value, nash_gap
-   - Use this to analyze LLM strategy patterns
+When running with `--combined`, results are overwritten each run in:
 
-3. **summary_{timestamp}.json** - Summary statistics
-   - Overall performance metrics
+```
+results/pure_and_mixed_latest/
+```
+
+Files:
+
+1. **games.json** - Shared game mapping data (100 entries)
+  - Maps game_id to payoff matrix and Nash equilibria
+
+2. **trials_pure_actions.json** - Pure action trials
+  - Contains: game_id, trial_id, llm_decision, llm_value, best_response_value, nash_gap
+
+3. **summary_pure_actions.json** - Pure action summary statistics
+
+4. **trials_mixed_strategy.json** - Mixed strategy trials
+  - Contains: game_id, trial_id, llm_decision (probabilities), llm_value, nash_gap
+
+5. **summary_mixed_strategy.json** - Mixed strategy summary statistics
+
+### Single-Mode Output
+
+When running without `--combined`, a run-specific folder is created:
+
+```
+results/run_YYYYMMDD_HHMMSS/
+```
+
+Files:
+
+1. **games.json**
+2. **trials.json**
+3. **summary.json**
 
 ### Example Output Format
 
@@ -191,17 +215,14 @@ The benchmark generates three files in the `results/` directory:
 
 The benchmark supports multiple LLM backends:
 
-### 1. Ollama (Local Inference) - **Recommended**
+### 1. Together AI (Hosted Llama 3) - **Recommended**
 ```bash
-# Start Ollama (in separate terminal)
-ollama serve
-
-# Run benchmark with llama3.1
+export TOGETHER_API_KEY="your_key_here"
 python main.py --num-games 100 --num-trials 100 --seed 42
 ```
-- **Pros**: Free, local, fast, no API keys
-- **Cons**: Requires GPU/good CPU
-- **Models**: Supports any Ollama model (llama3.1, llama2, etc.)
+- **Pros**: Hosted inference, no local GPU needed
+- **Cons**: API calls cost money (~$0.001 per request)
+- **Setup**: Get API key from https://www.together.ai
 
 ### 2. DummyLLM (Random Baseline)
 ```bash
@@ -210,16 +231,7 @@ python main.py --llm-type dummy --num-games 100 --num-trials 100 --seed 42
 - **Pros**: No dependencies, fast testing
 - **Cons**: Random decisions, not a real LLM
 
-### 3. Together AI (Hosted Llama 3)
-```bash
-export TOGETHER_API_KEY="your_key_here"
-python main.py --llm-type together --num-games 100 --num-trials 100 --seed 42
-```
-- **Pros**: Hosted inference, no local GPU needed
-- **Cons**: API calls cost money (~$0.001 per request)
-- **Setup**: Get API key from https://www.together.ai
-
-### 4. OpenAI (GPT-4 / GPT-3.5)
+### 3. OpenAI (GPT-4 / GPT-3.5)
 ```bash
 export OPENAI_API_KEY="your_key_here"
 python main.py --llm-type openai --llm-model gpt-3.5-turbo --seed 42

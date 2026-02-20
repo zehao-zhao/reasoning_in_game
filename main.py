@@ -3,11 +3,12 @@
 import argparse
 import json
 import numpy as np
+import shutil
 from pathlib import Path
 from datetime import datetime
 
 from src.game_generator import generate_game_batch
-from src.llm_interface import DummyLLM, OllamaLLM, TogetherAILLM, OpenAILLM
+from src.llm_interface import DummyLLM, TogetherAILLM, OpenAILLM
 from src.benchmark import Benchmark
 
 
@@ -20,7 +21,7 @@ def run_benchmark(
     seed: int = None,
     output_dir: str = "results",
     llm_seed: int = None,
-    llm_type: str = "dummy",
+    llm_type: str = "together",
     llm_model: str = None,
     parallel: bool = False,
     num_workers: int = 14,
@@ -38,7 +39,7 @@ def run_benchmark(
         seed: Seed for game generation
         output_dir: Directory to save results
         llm_seed: Seed for LLM randomness (DummyLLM only)
-        llm_type: Type of LLM ('dummy', 'ollama', 'together', 'openai')
+        llm_type: Type of LLM ('dummy', 'together', 'openai')
         llm_model: Specific model name (optional, uses defaults)
         parallel: If True, use parallel workers for faster LLM queries
         num_workers: Number of parallel workers (default: 14)
@@ -52,10 +53,6 @@ def run_benchmark(
     # Initialize the appropriate LLM backend
     if llm_type.lower() == "dummy":
         llm = DummyLLM(seed=llm_seed, use_pure_actions=True)
-    elif llm_type.lower() == "ollama":
-        model = llm_model or "llama3.1"
-        print(f"  Model: {model}")
-        llm = OllamaLLM(model=model)
     elif llm_type.lower() == "together":
         model = llm_model or "meta-llama/Meta-Llama-3.1-70B-Instruct-Turbo"
         print(f"  Model: {model}")
@@ -149,7 +146,7 @@ def run_combined_benchmark(
     seed: int = None,
     output_dir: str = "results",
     llm_seed: int = None,
-    llm_type: str = "dummy",
+    llm_type: str = "together",
     llm_model: str = None,
     parallel: bool = False,
     num_workers: int = 14
@@ -166,7 +163,7 @@ def run_combined_benchmark(
         seed: Seed for game generation
         output_dir: Directory to save results
         llm_seed: Seed for LLM randomness
-        llm_type: Type of LLM ('dummy', 'ollama', 'together', 'openai')
+        llm_type: Ignored (combined mode always uses Together AI)
         llm_model: Specific model name (optional, uses defaults)
         parallel: If True, use parallel workers
         num_workers: Number of parallel workers (default: 14)
@@ -174,15 +171,14 @@ def run_combined_benchmark(
     print(f"Generating {num_games} games ({num_rows}x{num_cols})...")
     games = generate_game_batch(num_games, num_rows, num_cols, payoff_range, seed=seed)
     
+    if llm_type.lower() != "together":
+        print(f"Overriding LLM type '{llm_type}' to 'together' for combined benchmark.")
+        llm_type = "together"
     print(f"Initializing {llm_type.upper()} LLM interface...")
     
     # Initialize the appropriate LLM backend
     if llm_type.lower() == "dummy":
         llm = DummyLLM(seed=llm_seed, use_pure_actions=True)
-    elif llm_type.lower() == "ollama":
-        model = llm_model or "llama3.1"
-        print(f"  Model: {model}")
-        llm = OllamaLLM(model=model)
     elif llm_type.lower() == "together":
         model = llm_model or "meta-llama/Meta-Llama-3.1-70B-Instruct-Turbo"
         print(f"  Model: {model}")
@@ -204,8 +200,9 @@ def run_combined_benchmark(
         print(f"Auto-enabling parallel execution for {llm_type} (network-based LLM)")
     
     # Create combined output folder
-    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    combined_dir = Path(output_dir) / f"pure_and_mixed_{timestamp}"
+    combined_dir = Path(output_dir) / "pure_and_mixed_latest"
+    if combined_dir.exists():
+        shutil.rmtree(combined_dir)
     combined_dir.mkdir(parents=True, exist_ok=True)
     
     # Save shared games file
@@ -333,9 +330,9 @@ if __name__ == "__main__":
     parser.add_argument("--seed", type=int, default=None, help="Random seed for game generation")
     parser.add_argument("--output-dir", type=str, default="results", help="Output directory (default: results)")
     parser.add_argument("--llm-seed", type=int, default=None, help="Random seed for LLM")
-    parser.add_argument("--llm-type", type=str, default="dummy", 
-                       choices=["dummy", "ollama", "together", "openai"],
-                       help="LLM backend type (default: dummy)")
+    parser.add_argument("--llm-type", type=str, default="together", 
+                       choices=["dummy", "together", "openai"],
+                       help="LLM backend type (default: together)")
     parser.add_argument("--llm-model", type=str, default=None,
                        help="Specific model name (overrides defaults)")
     parser.add_argument("--parallel", action="store_true",
