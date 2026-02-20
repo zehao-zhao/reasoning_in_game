@@ -40,27 +40,59 @@ This project implements a benchmark for evaluating LLM performance in zero-sum m
 pip install -r requirements.txt
 ```
 
+3. (Optional) Install Ollama for local LLM inference:
+   - Download from https://ollama.ai
+   - Pull a model: `ollama pull llama3.1`
+   - Start server: `ollama serve` (in a separate terminal)
+
 ## Quick Start
 
-Run a simple benchmark with 100 random games:
+### Using Ollama (Local LLM)
 
+Start Ollama in a separate terminal:
 ```bash
-python main.py --num-games 100 --seed 42
+ollama serve
+```
+
+Then run the benchmark (uses llama3.1 by default):
+```bash
+python main.py --num-games 10 --num-trials 10 --seed 42
+```
+
+### Using Dummy LLM (Random baseline)
+
+For testing without Ollama:
+```bash
+python main.py --num-games 10 --num-trials 10 --llm-type dummy --seed 42
 ```
 
 ### Command Line Options
 
-- `--num-games`: Number of games to benchmark (default: 100)
+- `--num-games`: Number of games to generate (default: 100)
+- `--num-trials`: Number of trials per game (default: 100)
 - `--num-rows`: Number of row player actions (default: 3)
 - `--num-cols`: Number of column player actions (default: 3)
-- `--seed`: Random seed for reproducibility
+- `--seed`: Random seed for game generation
+- `--llm-seed`: Random seed for LLM (DummyLLM only)
+- `--llm-type`: LLM backend type: `ollama`, `dummy`, `together`, `openai` (default: `ollama`)
+- `--llm-model`: Specific model name (e.g., `llama3.1`, `llama2`)
 - `--output-dir`: Directory to save results (default: "results")
-- `--llm-seed`: Seed for LLM randomness
 
-### Example
+### Examples
 
+Run 100 games × 100 trials with ollama:
 ```bash
-python main.py --num-games 500 --num-rows 4 --num-cols 4 --seed 123 --output-dir results/exp1
+python main.py --num-games 100 --num-trials 100 --seed 42
+```
+
+Run smaller experiment with dummy LLM (for testing):
+```bash
+python main.py --num-games 10 --num-trials 10 --llm-type dummy --seed 42
+```
+
+Custom game size (2x2 games) with ollama:
+```bash
+python main.py --num-games 50 --num-trials 50 --num-rows 2 --num-cols 2 --seed 123
 ```
 
 ## Benchmark Protocol
@@ -88,16 +120,49 @@ Summary statistics across all games:
 
 ## Output
 
-Results are saved to the `results/` directory:
+The benchmark generates three files in the `results/` directory:
 
-- `benchmark_results_{timestamp}.json`: Detailed results for each game
-- `benchmark_summary_{timestamp}.json`: Summary statistics
+1. **games_{timestamp}.json** - Game mapping data (100 entries)
+   - Maps game_id to payoff matrix and Nash equilibria
+   - Use this to look up the actual game for any trial result
+
+2. **trials_{timestamp}.json** - Trial results (10,000 entries for 100 games × 100 trials)
+   - Contains: game_id, trial_id, llm_decision, llm_value, best_response_value, nash_gap
+   - Use this to analyze LLM strategy patterns
+
+3. **summary_{timestamp}.json** - Summary statistics
+   - Overall performance metrics
 
 ### Example Output Format
 
+**Game entry:**
+```json
+{
+  "game_id": 0,
+  "payoff_matrix": [[1.5, -2.3], [-0.8, 3.1]],
+  "nash_equilibrium_row": [0.45, 0.55],
+  "nash_equilibrium_col": [0.60, 0.40]
+}
+```
+
+**Trial entry:**
+```json
+{
+  "game_id": 0,
+  "trial_id": 0,
+  "llm_decision": 1,
+  "llm_value": -0.42,
+  "best_response_value": 0.15,
+  "nash_gap": 0.57
+}
+```
+
+**Summary entry:**
 ```json
 {
   "num_games": 100,
+  "num_trials_per_game": 100,
+  "total_trials": 10000,
   "mean_nash_gap": 23.45,
   "median_nash_gap": 20.12,
   "std_nash_gap": 15.67,
@@ -108,51 +173,65 @@ Results are saved to the `results/` directory:
 }
 ```
 
-## Using with Real LLMs
+## Using Different LLM Backends
 
-To use with a real LLM (e.g., OpenAI API):
+The benchmark supports multiple LLM backends:
 
-1. Create a custom LLMInterface subclass:
-```python
-from src.llm_interface import LLMInterface
+### 1. Ollama (Local Inference) - **Recommended**
+```bash
+# Start Ollama (in separate terminal)
+ollama serve
 
-class OpenAILLM(LLMInterface):
-    def __init__(self, model="gpt-3.5-turbo"):
-        self.model = model
-    
-    def query(self, game: MatrixGame) -> Union[int, np.ndarray]:
-        prompt = GamePromptFormatter.format_game_as_text(game)
-        response = openai.ChatCompletion.create(
-            model=self.model,
-            messages=[{"role": "user", "content": prompt}]
-        )
-        # Parse response...
+# Run benchmark with llama3.1
+python main.py --num-games 100 --num-trials 100 --seed 42
 ```
+- **Pros**: Free, local, fast, no API keys
+- **Cons**: Requires GPU/good CPU
+- **Models**: Supports any Ollama model (llama3.1, llama2, etc.)
 
-2. Use in benchmark:
-```python
-llm = OpenAILLM()
-benchmark = Benchmark(llm)
-results, summary = benchmark.evaluate_games(games)
+### 2. DummyLLM (Random Baseline)
+```bash
+python main.py --llm-type dummy --num-games 100 --num-trials 100 --seed 42
 ```
+- **Pros**: No dependencies, fast testing
+- **Cons**: Random decisions, not a real LLM
+
+### 3. Together AI (Hosted Llama 3)
+```bash
+export TOGETHER_API_KEY="your_key_here"
+python main.py --llm-type together --num-games 100 --num-trials 100 --seed 42
+```
+- **Pros**: Hosted inference, no local GPU needed
+- **Cons**: API calls cost money (~$0.001 per request)
+- **Setup**: Get API key from https://www.together.ai
+
+### 4. OpenAI (GPT-4 / GPT-3.5)
+```bash
+export OPENAI_API_KEY="your_key_here"
+python main.py --llm-type openai --llm-model gpt-3.5-turbo --seed 42
+```
+- **Pros**: State-of-the-art models
+- **Cons**: Costs per request (~$0.001-0.01 per game)
+- **Setup**: Get API key from https://platform.openai.com
 
 ## Testing
 
-Run tests (coming soon):
+Run unit tests:
 ```bash
-pytest tests/
+PYTHONPATH=. python tests/test_core.py
 ```
 
 ## Notes
 
-- Currently uses a dummy LLM for testing. Replace with actual LLM implementation.
 - Nash equilibrium computation uses linear programming (scipy.optimize.linprog)
 - Supports both pure action and mixed strategy LLM outputs
 - Results are deterministic when seeds are fixed
+- Response parsing is basic; you may need to customize for specific LLMs
 
 ## Future Work
 
-- [ ] Integration with actual LLM APIs
+- [ ] Improved response parsing for complex LLM outputs
+
 - [ ] More sophisticated response parsing
 - [ ] Analysis and visualization notebooks
 - [ ] Support for non-zero-sum games
