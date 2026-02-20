@@ -153,3 +153,148 @@ class ResponseParser:
             pass
         
         return None
+
+
+class OllamaLLM(LLMInterface):
+    """Llama 3 via Ollama (local inference)."""
+    
+    def __init__(self, model: str = "llama2", base_url: str = "http://localhost:11434"):
+        """
+        Initialize Ollama LLM.
+        
+        Args:
+            model: Model name (e.g., "llama2", "llama3", etc.)
+            base_url: Ollama API endpoint
+        """
+        self.model = model
+        self.base_url = base_url
+        try:
+            import requests
+            self.requests = requests
+        except ImportError:
+            raise ImportError("requests required for OllamaLLM. Install: pip install requests")
+    
+    def query(self, game: MatrixGame) -> Union[int, np.ndarray]:
+        """Query Ollama API."""
+        prompt = GamePromptFormatter.format_game_as_text(game)
+        
+        try:
+            response = self.requests.post(
+                f"{self.base_url}/api/generate",
+                json={"model": self.model, "prompt": prompt, "stream": False},
+                timeout=60
+            )
+            response.raise_for_status()
+            text = response.json().get("response", "")
+            
+            # Try to parse response
+            decision = ResponseParser.parse_response(text, game.num_row_actions)
+            if decision is not None:
+                return decision
+            
+            # Fallback: random choice
+            return np.random.randint(0, game.num_row_actions)
+        except Exception as e:
+            print(f"Error querying Ollama: {e}")
+            print(f"Make sure Ollama is running: ollama serve")
+            return np.random.randint(0, game.num_row_actions)
+
+
+class TogetherAILLM(LLMInterface):
+    """Llama 3 via Together AI (hosted inference)."""
+    
+    def __init__(self, model: str = "meta-llama/Llama-3-70b-chat-hf", api_key: str = None):
+        """
+        Initialize Together AI LLM.
+        
+        Args:
+            model: Model name (Llama 3 variant)
+            api_key: Together AI API key (from env variable if not provided)
+        """
+        import os
+        self.model = model
+        self.api_key = api_key or os.getenv("TOGETHER_API_KEY")
+        
+        if not self.api_key:
+            raise ValueError("TOGETHER_API_KEY env variable not set")
+        
+        try:
+            import together
+            self.together = together
+            self.together.api_key = self.api_key
+        except ImportError:
+            raise ImportError("together required for TogetherAILLM. Install: pip install together")
+    
+    def query(self, game: MatrixGame) -> Union[int, np.ndarray]:
+        """Query Together AI API."""
+        prompt = GamePromptFormatter.format_game_as_text(game)
+        
+        try:
+            response = self.together.Complete.create(
+                prompt=prompt,
+                model=self.model,
+                max_tokens=256,
+                temperature=0.7
+            )
+            text = response["output"]["choices"][0]["text"]
+            
+            # Try to parse response
+            decision = ResponseParser.parse_response(text, game.num_row_actions)
+            if decision is not None:
+                return decision
+            
+            # Fallback: random choice
+            return np.random.randint(0, game.num_row_actions)
+        except Exception as e:
+            print(f"Error querying Together AI: {e}")
+            return np.random.randint(0, game.num_row_actions)
+
+
+class OpenAILLM(LLMInterface):
+    """GPT-4 / GPT-3.5 via OpenAI API."""
+    
+    def __init__(self, model: str = "gpt-4", api_key: str = None):
+        """
+        Initialize OpenAI LLM.
+        
+        Args:
+            model: Model name (e.g., "gpt-4", "gpt-3.5-turbo")
+            api_key: OpenAI API key (from env variable if not provided)
+        """
+        import os
+        self.model = model
+        self.api_key = api_key or os.getenv("OPENAI_API_KEY")
+        
+        if not self.api_key:
+            raise ValueError("OPENAI_API_KEY env variable not set")
+        
+        try:
+            import openai
+            openai.api_key = self.api_key
+            self.openai = openai
+        except ImportError:
+            raise ImportError("openai required for OpenAILLM. Install: pip install openai")
+    
+    def query(self, game: MatrixGame) -> Union[int, np.ndarray]:
+        """Query OpenAI API."""
+        prompt = GamePromptFormatter.format_game_as_text(game)
+        
+        try:
+            response = self.openai.ChatCompletion.create(
+                model=self.model,
+                messages=[{"role": "user", "content": prompt}],
+                temperature=0.7,
+                max_tokens=256
+            )
+            text = response["choices"][0]["message"]["content"]
+            
+            # Try to parse response
+            decision = ResponseParser.parse_response(text, game.num_row_actions)
+            if decision is not None:
+                return decision
+            
+            # Fallback: random choice
+            return np.random.randint(0, game.num_row_actions)
+        except Exception as e:
+            print(f"Error querying OpenAI: {e}")
+            return np.random.randint(0, game.num_row_actions)
