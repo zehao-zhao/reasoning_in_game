@@ -21,7 +21,9 @@ def run_benchmark(
     output_dir: str = "results",
     llm_seed: int = None,
     llm_type: str = "dummy",
-    llm_model: str = None
+    llm_model: str = None,
+    parallel: bool = False,
+    num_workers: int = 4
 ):
     """
     Run the benchmark with multiple trials per game.
@@ -37,6 +39,8 @@ def run_benchmark(
         llm_seed: Seed for LLM randomness (DummyLLM only)
         llm_type: Type of LLM ('dummy', 'ollama', 'together', 'openai')
         llm_model: Specific model name (optional, uses defaults)
+        parallel: If True, use parallel workers for faster LLM queries
+        num_workers: Number of parallel workers (default: 4)
     """
     print(f"Generating {num_games} games ({num_rows}x{num_cols})...")
     games = generate_game_batch(num_games, num_rows, num_cols, payoff_range, seed=seed)
@@ -65,8 +69,12 @@ def run_benchmark(
     benchmark = Benchmark(llm)
     games_data = benchmark.setup_games(games, verbose=True)
     
-    print(f"\nRunning {num_trials} trials per game...")
-    trial_results, summary = benchmark.run_trials(num_trials=num_trials, verbose=True)
+    print(f"\nRunning {num_trials} trials per game{'(parallel with ' + str(num_workers) + ' workers)...' if parallel else '...'}")
+    
+    if parallel:
+        trial_results, summary = benchmark.run_trials_parallel(num_trials=num_trials, num_workers=num_workers, verbose=True)
+    else:
+        trial_results, summary = benchmark.run_trials(num_trials=num_trials, verbose=True)
     
     # Save results
     Path(output_dir).mkdir(exist_ok=True)
@@ -125,6 +133,10 @@ if __name__ == "__main__":
                        help="LLM backend type (default: dummy)")
     parser.add_argument("--llm-model", type=str, default=None,
                        help="Specific model name (overrides defaults)")
+    parser.add_argument("--parallel", action="store_true",
+                       help="Use parallel workers for faster LLM queries (useful for network-based LLMs)")
+    parser.add_argument("--num-workers", type=int, default=4,
+                       help="Number of parallel workers (default: 4)")
     
     args = parser.parse_args()
     
@@ -137,5 +149,7 @@ if __name__ == "__main__":
         output_dir=args.output_dir,
         llm_seed=args.llm_seed,
         llm_type=args.llm_type,
-        llm_model=args.llm_model
+        llm_model=args.llm_model,
+        parallel=args.parallel,
+        num_workers=args.num_workers
     )

@@ -3,6 +3,7 @@
 import numpy as np
 from typing import List, Tuple, Dict, Any
 from dataclasses import dataclass, asdict
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from src.game_generator import MatrixGame
 from src.nash_solver import NashSolver
 from src.llm_interface import LLMInterface
@@ -249,6 +250,95 @@ class Benchmark:
                     nash_gap=float(nash_gap)
                 )
                 trial_results.append(trial_result)
+        
+        # Compute summary statistics
+        nash_gaps = np.array([r.nash_gap for r in trial_results])
+        llm_values = np.array([r.llm_value for r in trial_results])
+        br_values = np.array([r.best_response_value for r in trial_results])
+        
+        summary = {
+            "num_games": len(self.games_data),
+            "num_trials_per_game": num_trials,
+            "total_trials": len(trial_results),
+            "mean_nash_gap": float(np.mean(nash_gaps)),
+            "median_nash_gap": float(np.median(nash_gaps)),
+            "std_nash_gap": float(np.std(nash_gaps)),
+            "min_nash_gap": float(np.min(nash_gaps)),
+            "max_nash_gap": float(np.max(nash_gaps)),
+            "mean_llm_value": float(np.mean(llm_values)),
+            "mean_br_value": float(np.mean(br_values))
+        }
+        
+        return trial_results, summary
+    
+    def run_trials_parallel(self, num_trials: int = 100, num_workers: int = 4, verbose: bool = False) -> Tuple[List[TrialResult], Dict[str, float]]:
+        """
+        Run multiple trials for each game using parallel workers (much faster for network-based LLMs).
+        
+        Args:
+            num_trials: Number of times to query LLM for each game
+            num_workers: Number of parallel workers (default: 4)
+            verbose: If True, print progress
+            
+        Returns:
+            Tuple of (trial_results, summary_stats)
+        """
+        if not self.games_data:
+            raise RuntimeError("Must call setup_games() first")
+        
+        trial_results = []
+        
+        def run_single_trial(args):
+            """Helper function to run a single trial (for parallel execution)."""
+            game_data, trial_id = args
+            game = MatrixGame(game_data.payoff_matrix)
+            nash_col = game_data.nash_equilibrium_col
+            
+            # Get LLM decision
+            llm_decision = self.llm.query(game)
+            
+            # Compute LLM value against Nash opponent
+            if isinstance(llm_decision, int):
+                llm_strategy = np.zeros(game.num_row_actions)
+                llm_strategy[llm_decision] = 1.0
+            else:
+                llm_strategy = llm_decision
+                llm_strategy = llm_strategy / (llm_strategy.sum() + 1e-10)
+            
+            llm_value = self.nash_solver.get_game_value(game, llm_strategy, nash_col)
+            br_value = self.nash_solver.get_best_response_value(game, nash_col, is_row_player=True)
+            nash_gap = br_value - llm_value
+            
+            return TrialResult(
+                game_id=game_data.game_id,
+                trial_id=trial_id,
+                llm_decision=llm_decision,
+                llm_value=float(llm_value),
+                best_response_value=float(br_value),
+                nash_gap=float(nash_gap)
+            )
+        
+        # Create list of all (game_data, trial_id) pairs
+        all_trials = []
+        for game_data in self.games_data:
+            for trial_id in range(num_trials):
+                all_trials.append((game_data, trial_id))
+        
+        # Run trials in parallel
+        completed = 0
+        with ThreadPoolExecutor(max_workers=num_workers) as executor:
+            futures = {executor.submit(run_single_trial, trial): trial for trial in all_trials}
+            
+            for future in as_completed(futures):
+                completed += 1
+                trial_result = future.result()
+                trial_results.append(trial_result)
+                
+                if verbose and completed % 10 == 0:
+                    print(f"  Completed {completed}/{len(all_trials)} trials")
+        
+        # Sort by game_id and trial_id for consistency
+        trial_results.sort(key=lambda r: (r.game_id, r.trial_id))
         
         # Compute summary statistics
         nash_gaps = np.array([r.nash_gap for r in trial_results])

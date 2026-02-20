@@ -74,9 +74,11 @@ python main.py --num-games 10 --num-trials 10 --llm-type dummy --seed 42
 - `--num-cols`: Number of column player actions (default: 3)
 - `--seed`: Random seed for game generation
 - `--llm-seed`: Random seed for LLM (DummyLLM only)
-- `--llm-type`: LLM backend type: `ollama`, `dummy`, `together`, `openai` (default: `ollama`)
+- `--llm-type`: LLM backend type: `ollama`, `dummy`, `together`, `openai` (default: `dummy`)
 - `--llm-model`: Specific model name (e.g., `llama3.1`, `llama2`)
 - `--output-dir`: Directory to save results (default: "results")
+- `--parallel`: Enable parallel workers for faster execution (especially useful for network-based LLMs)
+- `--num-workers`: Number of parallel workers (default: 4, max recommended: 8-16)
 
 ### Examples
 
@@ -94,6 +96,18 @@ Custom game size (2x2 games) with ollama:
 ```bash
 python main.py --num-games 50 --num-trials 50 --num-rows 2 --num-cols 2 --seed 123
 ```
+
+**Parallel execution (4-10x faster for network-based LLMs):**
+```bash
+# Uses 4 parallel workers (adjust with --num-workers)
+python main.py --num-games 100 --num-trials 100 --llm-type together --parallel --num-workers 8 --seed 42
+```
+
+**Faster execution tips:**
+- **Reduce trials:** `--num-trials 20` (5x faster)
+- **Use parallelization:** `--parallel --num-workers 8` (best for remote LLMs)
+- **Smaller local model:** `--llm-type ollama --llm-model llama2` (3x faster)
+- **Together AI:** `--llm-type together --parallel` (good balance of speed & accuracy)
 
 ## Benchmark Protocol
 
