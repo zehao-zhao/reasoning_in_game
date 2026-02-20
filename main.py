@@ -23,7 +23,8 @@ def run_benchmark(
     llm_type: str = "dummy",
     llm_model: str = None,
     parallel: bool = False,
-    num_workers: int = 14
+    num_workers: int = 14,
+    mixed_strategy: bool = False
 ):
     """
     Run the benchmark with multiple trials per game.
@@ -40,7 +41,8 @@ def run_benchmark(
         llm_type: Type of LLM ('dummy', 'ollama', 'together', 'openai')
         llm_model: Specific model name (optional, uses defaults)
         parallel: If True, use parallel workers for faster LLM queries
-        num_workers: Number of parallel workers (default: 4)
+        num_workers: Number of parallel workers (default: 14)
+        mixed_strategy: If True, LLM outputs mixed strategy (probabilities); else pure actions
     """
     print(f"Generating {num_games} games ({num_rows}x{num_cols})...")
     games = generate_game_batch(num_games, num_rows, num_cols, payoff_range, seed=seed)
@@ -74,12 +76,21 @@ def run_benchmark(
     if use_parallel and not parallel and llm_type.lower() in ["together", "openai"]:
         print(f"Auto-enabling parallel execution for {llm_type} (network-based LLM)")
     
-    print(f"\nRunning {num_trials} trials per game{'(parallel with ' + str(num_workers) + ' workers)...' if use_parallel else '...'}")
+    strategy_type = "Mixed Strategy" if mixed_strategy else "Pure Actions"
+    print(f"\nRunning {num_trials} trials per game ({strategy_type}){'(parallel with ' + str(num_workers) + ' workers)...' if use_parallel else '...'}")
     
-    if use_parallel:
-        trial_results, summary = benchmark.run_trials_parallel(num_trials=num_trials, num_workers=num_workers, verbose=True)
+    if mixed_strategy:
+        # Query LLM for mixed strategies
+        if use_parallel:
+            trial_results, summary = benchmark.run_trials_parallel_mixed_strategy(num_trials=num_trials, num_workers=num_workers, verbose=True)
+        else:
+            trial_results, summary = benchmark.run_trials_mixed_strategy(num_trials=num_trials, verbose=True)
     else:
-        trial_results, summary = benchmark.run_trials(num_trials=num_trials, verbose=True)
+        # Query LLM for pure actions
+        if use_parallel:
+            trial_results, summary = benchmark.run_trials_parallel(num_trials=num_trials, num_workers=num_workers, verbose=True)
+        else:
+            trial_results, summary = benchmark.run_trials(num_trials=num_trials, verbose=True)
     
     # Save results in run-specific folder structure
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -121,7 +132,11 @@ def run_benchmark(
     print(f"Min Nash gap: {summary['min_nash_gap']:.4f}")
     print(f"Max Nash gap: {summary['max_nash_gap']:.4f}")
     print(f"Mean LLM value: {summary['mean_llm_value']:.4f}")
-    print(f"Mean BR value: {summary['mean_br_value']:.4f}")
+    
+    if mixed_strategy:
+        print(f"Mean Nash value: {summary.get('mean_nash_value', summary.get('mean_br_value', 'N/A')):.4f}")
+    else:
+        print(f"Mean BR value: {summary['mean_br_value']:.4f}")
     print("="*60)
 
 
@@ -143,6 +158,8 @@ if __name__ == "__main__":
                        help="Use parallel workers for faster LLM queries (useful for network-based LLMs)")
     parser.add_argument("--num-workers", type=int, default=14,
                        help="Number of parallel workers (default: 14 - matches your CPU cores)")
+    parser.add_argument("--mixed-strategy", action="store_true",
+                       help="Query LLM for mixed strategy (probability distribution) instead of pure actions")
     
     args = parser.parse_args()
     
@@ -157,5 +174,6 @@ if __name__ == "__main__":
         llm_type=args.llm_type,
         llm_model=args.llm_model,
         parallel=args.parallel,
-        num_workers=args.num_workers
+        num_workers=args.num_workers,
+        mixed_strategy=args.mixed_strategy
     )
