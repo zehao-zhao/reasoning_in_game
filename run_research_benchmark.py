@@ -3,7 +3,8 @@
 Research benchmark for UAI submission.
 
 Recommended setup for reproducible, citable research:
-- Use Together AI (hosted llama3.1) for consistency
+- Use Together AI (hosted Llama 3.1) for consistency
+- Combined benchmarks (pure + mixed) on identical games
 - Parallel execution (14 workers) for speed
 - Multiple seeds for robustness
 """
@@ -25,7 +26,8 @@ def run_experiment(exp_name: str, num_games: int = 100, num_trials: int = 100, s
         "python", "main.py",
         "--num-games", str(num_games),
         "--num-trials", str(num_trials),
-        "--llm-type", "together",  # Use Together AI (hosted llama3.1)
+        "--llm-type", "together",  # Use Together AI (hosted Llama 3.1)
+        "--combined",
         "--parallel",  # Already auto-enabled for together, but explicit
         "--num-workers", "14",
         "--seed", str(seed),
@@ -63,7 +65,7 @@ def main():
     print("All experiments completed!")
     print(f"Results saved to: {base_dir}")
     print(f"Finished: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
-    print("='*60")
+    print("="*60)
 
 
 if __name__ == "__main__":

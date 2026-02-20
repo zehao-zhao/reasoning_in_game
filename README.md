@@ -25,7 +25,7 @@ This project implements a benchmark for evaluating LLM performance in zero-sum m
 │   ├── nash_solver.py         # Compute Nash equilibrium using LP
 │   ├── llm_interface.py       # LLM query interface and response parsing
 │   └── benchmark.py           # Benchmark runner and metrics
-├── tests/                      # Unit tests (coming soon)
+├── tests/                      # Unit tests
 ├── notebooks/                  # Jupyter notebooks for analysis
 ├── main.py                     # Main benchmark runner
 ├── requirements.txt            # Python dependencies
@@ -40,6 +40,11 @@ This project implements a benchmark for evaluating LLM performance in zero-sum m
 pip install -r requirements.txt
 ```
 
+Optional analysis dependencies (for `analyze_performance.py`):
+```bash
+pip install pandas matplotlib
+```
+
 ## Quick Start
 
 ### Using Together AI (Hosted Llama 3)
@@ -50,7 +55,17 @@ export TOGETHER_API_KEY="your_key_here"
 python main.py --num-games 10 --num-trials 10 --combined --seed 42
 ```
 
-This writes results to:
+By default, this writes results to a timestamped folder:
+```
+results/pure_and_mixed_YYYYMMDD_HHMMSS/
+```
+
+To overwrite a fixed folder each run:
+```bash
+python main.py --num-games 10 --num-trials 10 --combined --overwrite --seed 42
+```
+
+Overwritten results go to:
 ```
 results/pure_and_mixed_latest/
 ```
@@ -75,7 +90,8 @@ python main.py --num-games 10 --num-trials 10 --llm-type dummy --seed 42
 - `--output-dir`: Directory to save results (default: "results")
 - `--parallel`: Enable parallel workers for faster execution (especially useful for network-based LLMs)
 - `--num-workers`: Number of parallel workers (default: 4, max recommended: 8-16)
-- `--combined`: Run both pure action and mixed strategy benchmarks on the same games (writes to `results/pure_and_mixed_latest/`; uses Together AI)
+- `--combined`: Run both pure action and mixed strategy benchmarks on the same games (uses Together AI)
+- `--overwrite`: Overwrite combined results in `results/pure_and_mixed_latest/` (default is a timestamped folder)
 
 ### Examples
 
@@ -136,7 +152,7 @@ The benchmark writes to the `results/` directory.
 
 ### Combined Benchmark Output (Recommended)
 
-When running with `--combined`, results are overwritten each run in:
+When running with `--combined --overwrite`, results are overwritten each run in:
 
 ```
 results/pure_and_mixed_latest/
@@ -156,6 +172,12 @@ Files:
   - Contains: game_id, trial_id, llm_decision (probabilities), llm_value, nash_gap
 
 5. **summary_mixed_strategy.json** - Mixed strategy summary statistics
+
+When running with `--combined` without `--overwrite`, a timestamped folder is created:
+
+```
+results/pure_and_mixed_YYYYMMDD_HHMMSS/
+```
 
 ### Single-Mode Output
 
@@ -255,9 +277,6 @@ PYTHONPATH=. python tests/test_core.py
 - Response parsing is basic; you may need to customize for specific LLMs
 
 ## Future Work
-
-- [ ] Improved response parsing for complex LLM outputs
-
 - [ ] More sophisticated response parsing
 - [ ] Analysis and visualization notebooks
 - [ ] Support for non-zero-sum games

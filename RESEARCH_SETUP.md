@@ -71,7 +71,13 @@ With 14 parallel workers + Together AI:
 
 ## Output Format
 
-Combined experiments overwrite the same folder each run:
+By default, combined experiments write to a timestamped folder:
+
+```
+results/pure_and_mixed_YYYYMMDD_HHMMSS/
+```
+
+If you want to overwrite a fixed folder each run, add `--overwrite`:
 
 ```
 results/pure_and_mixed_latest/
@@ -87,14 +93,6 @@ results/pure_and_mixed_latest/
 Include in methods section:
 
 > "We benchmarked LLM game-theoretic reasoning using 100 randomly generated 3×3 zero-sum matrix games, with 100 trials per game. The LLM was queried via Together AI's hosted Llama 3.1 70B model (together.ai). Parallel execution with 14 workers ensured reproducibility and efficiency."
-
-## Alternatives (if Together AI is unavailable)
-
-### Groq (Free tier, extremely fast - coming soon)
-```bash
-# Will support when API is stable
-python main.py --num-games 100 --num-trials 100 --llm-type groq --parallel --num-workers 14
-```
 
 ## Troubleshooting
 

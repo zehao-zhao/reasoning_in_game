@@ -149,7 +149,8 @@ def run_combined_benchmark(
     llm_type: str = "together",
     llm_model: str = None,
     parallel: bool = False,
-    num_workers: int = 14
+    num_workers: int = 14,
+    overwrite: bool = False
 ):
     """
     Run BOTH pure action AND mixed strategy benchmarks on the same games.
@@ -167,6 +168,7 @@ def run_combined_benchmark(
         llm_model: Specific model name (optional, uses defaults)
         parallel: If True, use parallel workers
         num_workers: Number of parallel workers (default: 14)
+        overwrite: If True, overwrite results in results/pure_and_mixed_latest/
     """
     print(f"Generating {num_games} games ({num_rows}x{num_cols})...")
     games = generate_game_batch(num_games, num_rows, num_cols, payoff_range, seed=seed)
@@ -200,10 +202,15 @@ def run_combined_benchmark(
         print(f"Auto-enabling parallel execution for {llm_type} (network-based LLM)")
     
     # Create combined output folder
-    combined_dir = Path(output_dir) / "pure_and_mixed_latest"
-    if combined_dir.exists():
-        shutil.rmtree(combined_dir)
-    combined_dir.mkdir(parents=True, exist_ok=True)
+    if overwrite:
+        combined_dir = Path(output_dir) / "pure_and_mixed_latest"
+        if combined_dir.exists():
+            shutil.rmtree(combined_dir)
+        combined_dir.mkdir(parents=True, exist_ok=True)
+    else:
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        combined_dir = Path(output_dir) / f"pure_and_mixed_{timestamp}"
+        combined_dir.mkdir(parents=True, exist_ok=True)
     
     # Save shared games file
     games_file = combined_dir / "games.json"
@@ -343,6 +350,8 @@ if __name__ == "__main__":
                        help="Query LLM for mixed strategy (probability distribution) instead of pure actions")
     parser.add_argument("--combined", action="store_true",
                        help="Run BOTH pure actions AND mixed strategy benchmarks on same games (ignore --mixed-strategy)")
+    parser.add_argument("--overwrite", action="store_true",
+                       help="Overwrite results in results/pure_and_mixed_latest/ (combined mode only)")
     
     args = parser.parse_args()
     
@@ -359,7 +368,8 @@ if __name__ == "__main__":
             llm_type=args.llm_type,
             llm_model=args.llm_model,
             parallel=args.parallel,
-            num_workers=args.num_workers
+            num_workers=args.num_workers,
+            overwrite=args.overwrite
         )
     else:
         # Run single benchmark (pure or mixed based on flag)

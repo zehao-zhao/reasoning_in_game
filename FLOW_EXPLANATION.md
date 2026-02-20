@@ -1,256 +1,193 @@
-# Complete Dataset & Benchmark Flow Explanation
+# Benchmark Flow (Current Design)
 
-## Overview Diagram
-
+```mermaid
+flowchart TD
+  A[Generate zero-sum games] --> B[Compute Nash equilibrium per game]
+  B --> C[Pure action queries vs Nash opponent]
+  B --> D[Mixed strategy queries vs Nash opponent]
+  C --> E[Save pure trials + summary]
+  D --> F[Save mixed trials + summary]
+  E --> G[Combined results folder]
+  F --> G
 ```
-┌─────────────────────────────────────────────────────────────────────────┐
-│                    GAME GENERATION (One-time)                          │
-├─────────────────────────────────────────────────────────────────────────┤
-│  • Create 100 random 3×3 zero-sum games                                │
-│  • Each game has payoff matrix U[i,j] = Row player's payoff            │
-│  • Column player's payoff = -U[i,j] (zero-sum constraint)              │
-│  • Payoffs randomly sampled from [-100, 100]                           │
-└─────────────────────────────────────────────────────────────────────────┘
-                                    ↓
-┌─────────────────────────────────────────────────────────────────────────┐
-│           GAME SETUP: Compute Nash Equilibrium (One-time)               │
-├─────────────────────────────────────────────────────────────────────────┤
-│  For each game, solve 2 linear programs:                               │
-│                                                                         │
-│  1. ROW PLAYER'S STRATEGY (Nash mixed strategy σ_r):                   │
-│     • Maximize minimum expected payoff                                  │
-│     • Formula: max_σ min_j Σ_i U[i,j] * σ_r[i]                       │
-│     • Result: σ_r = [p₁, p₂, p₃] (probability distribution)           │
-│                                                                         │
-│  2. COLUMN PLAYER'S STRATEGY (Nash mixed strategy σ_c):                │
-│     • Minimize maximum expected loss                                    │
-│     • Formula: min_σ max_i Σ_j U[i,j] * σ_c[j]                       │
-│     • Result: σ_c = [q₁, q₂, q₃] (probability distribution)           │
-│                                                                         │
-│  3. NASH VALUE: v* = σ_r^T @ U @ σ_c                                  │
-│     • Expected payoff when both play Nash equilibrium                   │
-│                                                                         │
-│  Key insight: Column player ALWAYS plays σ_c (fixed!)                  │
-└─────────────────────────────────────────────────────────────────────────┘
-                                    ↓
-┌─────────────────────────────────────────────────────────────────────────┐
-│        DATASET STRUCTURE: games.json (Saved once per experiment)        │
-├─────────────────────────────────────────────────────────────────────────┤
-│  [                                                                       │
-│    {                                                                     │
-│      "game_id": 0,                                                      │
-│      "payoff_matrix": [[-25.09, 90.14, 46.40],                          │
-│                        [19.73, -68.80, -68.80],                        │
-│                        [-88.38, 73.24, 20.22]],                        │
-│      "nash_equilibrium_row": [0.553, 0.447, 0.0],    ← Row plays this  │
-│      "nash_equilibrium_col": [0.720, 0.0, 0.280]     ← Column plays this│
-│    },                                                                    │
-│    ...100 games total...                                                │
-│  ]                                                                       │
-└─────────────────────────────────────────────────────────────────────────┘
-                                    ↓
-┌─────────────────────────────────────────────────────────────────────────┐
-│      BENCHMARK TRIAL LOOP: For each trial of each game                 │
-├─────────────────────────────────────────────────────────────────────────┤
-│                                                                         │
-│  📝 STEP 1: QUERY LLM                                                   │
-│  ───────────────────────                                                │
-│  Input:  Game matrix (formatted as text)                               │
-│  Output: LLM chooses ONE action: 0, 1, or 2                            │
-│                                                                         │
-│  Example prompt:                                                        │
-│  "You're the row player. Payoff matrix:                                │
-│   Action 0: [-25.09,  90.14,  46.40]                                   │
-│   Action 1: [19.73,  -68.80, -68.80]                                   │
-│   Action 2: [-88.38,  73.24,  20.22]                                   │
-│   Choose action 0, 1, or 2."                                            │
-│                                                                         │
-│  LLM response: "I choose action 0"                                      │
-│  Parsed: llm_decision = 0                                               │
-│                                                                         │
-│  ─────────────────────────────────────────────────────────────────────  │
-│                                                                         │
-│  ⚔️  STEP 2: GAME OUTCOME - LLM vs Nash Opponent                        │
-│  ──────────────────────────────────────────────────                     │
-│  • LLM chose action: 0                                                  │
-│  • Opponent plays Nash strategy: σ_c = [0.720, 0.0, 0.280]             │
-│                                                                         │
-│  LLM's strategy (pure action 0):                                        │
-│    σ_llm = [1.0, 0.0, 0.0]  (100% probability on action 0)            │
-│                                                                         │
-│  Expected payoff for LLM:                                               │
-│    LLM_value = σ_llm @ U @ σ_c                                          │
-│               = [1.0, 0.0, 0.0] @ U @ [0.720, 0.0, 0.280]             │
-│               = U[0,:] @ σ_c                                            │
-│               = [-25.09*0.720 + 90.14*0.0 + 46.40*0.280]               │
-│               = -18.06 + 0 + 12.99                                      │
-│               = -5.07  ← What LLM got                                   │
-│                                                                         │
-│  ─────────────────────────────────────────────────────────────────────  │
-│                                                                         │
-│  🏆 STEP 3: BEST RESPONSE COMPUTATION                                    │
-│  ──────────────────────────────                                         │
-│  What could LLM have gotten if it played OPTIMALLY against σ_c?        │
-│                                                                         │
-│  Compute payoff for each possible action against σ_c:                  │
-│    BR[0] = U[0,:] @ σ_c = -18.06 + 0 + 12.99 = -5.07                  │
-│    BR[1] = U[1,:] @ σ_c = 19.73*0.720 - 68.80*0.0 - 68.80*0.280       │
-│           = 14.20 + 0 - 19.26 = -5.06                                  │
-│    BR[2] = U[2,:] @ σ_c = -88.38*0.720 + 73.24*0.0 + 20.22*0.280      │
-│           = -63.63 + 0 + 5.66 = -57.97                                 │
-│                                                                         │
-│  Best response action: argmax{-5.07, -5.06, -57.97} = 1               │
-│  Best response value: -5.06  ← What LLM should have gotten             │
-│                                                                         │
-│  ─────────────────────────────────────────────────────────────────────  │
-│                                                                         │
-│  📊 STEP 4: COMPUTE NASH GAP METRIC                                     │
-│  ────────────────────────────────────                                   │
-│  Nash gap = Best Response Value - LLM Value                            │
-│          = (-5.06) - (-5.07)                                            │
-│          = 0.01                                                         │
-│                                                                         │
-│  Interpretation:                                                        │
-│    • Nash gap = 0: LLM played optimally against Nash opponent          │
-│    • Nash gap > 0: LLM played suboptimally (lost money)                │
-│    • Nash gap = 50: LLM could have earned 50 more by playing BR       │
-│                                                                         │
-│  For 100 games × 1 trial (what we ran):                                │
-│    • Mean gap: 17.59 (on average, LLM suboptimal by 17.59)             │
-│    • Median gap: ~0 (half the games played optimally)                  │
-│    • Hard games: 16 games with gap > 50 (LLM very suboptimal)          │
-│                                                                         │
-└─────────────────────────────────────────────────────────────────────────┘
-                                    ↓
-┌─────────────────────────────────────────────────────────────────────────┐
-│      DATASET STRUCTURE: trials.json (Saved after all trials)            │
-├─────────────────────────────────────────────────────────────────────────┤
-│  [                                                                       │
-│    {                                                                     │
-│      "game_id": 0,                                                      │
-│      "trial_id": 0,                                                     │
-│      "llm_decision": 0,              ← Action chosen by LLM             │
-│      "llm_value": -5.067,            ← Payoff LLM achieved              │
-│      "best_response_value": -5.067,  ← Best possible payoff             │
-│      "nash_gap": 0.0                 ← Difference (optimality metric)   │
-│    },                                                                    │
-│    {                                                                     │
-│      "game_id": 1,                                                      │
-│      "trial_id": 0,                                                     │
-│      "llm_decision": 0,              ← LLM chose action 0               │
-│      "llm_value": -78.828,           ← But got -78.828 (bad!)           │
-│      "best_response_value": -42.149, ← Could have gotten -42.149        │
-│      "nash_gap": 36.679              ← Lost 36.679 by poor choice       │
-│    },                                                                    │
-│    ...100 trials total (1 per game)...                                 │
-│  ]                                                                       │
-└─────────────────────────────────────────────────────────────────────────┘
+
+This document reflects the current benchmark design: we run both pure-action and mixed-strategy queries against a fixed Nash opponent, and we do **not** treat this as a pure-vs-mixed comparison. The current results show that **neither mode reliably solves the games**, and the next step is to fine-tune models to improve game-theoretic play.
+
+---
+
+## 1) Game Generation (Zero-Sum Only)
+
+- Generate $N$ random zero-sum matrix games (default: 3x3).
+- Payoff matrix $U[i,j]$ is the row player's payoff.
+- Column player's payoff is $-U[i,j]$ (zero-sum constraint).
+- Payoffs are sampled from a fixed range (default: $[-100, 100]$).
+
+---
+
+## 2) Nash Equilibrium Setup (One-Time per Game)
+
+For each game, compute the Nash equilibrium mixed strategies:
+
+- Row player strategy $\sigma_r$
+- Column player strategy $\sigma_c$
+- Nash value $v^* = \sigma_r^T U \sigma_c$
+
+**Key constraint used in all trials:** the column player **always** plays $\sigma_c$.
+
+---
+
+## 3) Two Query Modes (Same Games, Same Opponent)
+
+We run two modes on the **same games** to measure how far the LLM is from optimal play in either interface:
+
+### A) Pure Action Mode
+- LLM chooses a single action $a \in \{0,1,2\}$.
+- LLM value:
+  $$V_{\text{llm}} = U[a,:] \cdot \sigma_c$$
+- Best response value:
+  $$V_{\text{br}} = \max_i U[i,:] \cdot \sigma_c$$
+- Nash gap:
+  $$\text{gap} = V_{\text{br}} - V_{\text{llm}}$$
+
+### B) Mixed Strategy Mode
+- LLM outputs a probability distribution $\sigma_{\text{llm}}$.
+- LLM value:
+  $$V_{\text{llm}} = \sigma_{\text{llm}}^T U \sigma_c$$
+- Nash gap:
+  $$\text{gap} = v^* - V_{\text{llm}}$$
+
+**Important:** We are **not** comparing pure vs mixed as a winner. Both are evaluated as interfaces for the same strategic task, and the current evidence is that **neither achieves near-optimal play reliably**.
+
+---
+
+## 4) Prompts Given to the LLM
+
+Both prompts explicitly tell the LLM that the opponent plays the Nash mixed strategy.
+
+### Pure Action Prompt (Excerpt)
+
+```text
+Zero-sum matrix game:
+Your payoff matrix (you are the row player):
+
+  Col0      Col1      Col2
+Row0    ...       ...       ...
+Row1    ...       ...       ...
+Row2    ...       ...       ...
+
+Your actions: Row0, Row1, Row2
+Opponent has 3 possible actions
+
+IMPORTANT: The opponent is playing their Nash equilibrium mixed strategy.
+What single action do you choose? Respond with just the action number (0, 1, or 2).
+```
+
+### Mixed Strategy Prompt (Excerpt)
+
+```text
+Zero-sum matrix game:
+Your payoff matrix (you are the row player):
+
+  Col0      Col1      Col2
+Row0    ...       ...       ...
+Row1    ...       ...       ...
+Row2    ...       ...       ...
+
+Your actions: Row0, Row1, Row2
+Opponent has 3 possible actions
+
+IMPORTANT: The opponent is playing their Nash equilibrium mixed strategy.
+Provide YOUR mixed strategy (probability distribution) as a JSON object.
+The probabilities must sum to 1.0 and be non-negative.
+
+Example response format:
+{"action_0": 0.5, "action_1": 0.3, "action_2": 0.2}
+
+Respond ONLY with valid JSON, no other text.
 ```
 
 ---
 
-## Key Conceptual Points
+## 5) Output Structure (Combined Runs)
 
-### 1. **The Opponent is ALWAYS Playing Nash**
-- Column player strategy σ_c is computed ONCE during setup
-- **Same σ_c is used for ALL trials of that game**
-- LLM is measured against this fixed, optimal opponent
-- This is intentional: we want to measure LLM performance against best-play
+By default, combined runs write to a timestamped folder:
 
-### 2. **LLM Gets ONE Choice Per Trial**
-- LLM sees the game matrix and chooses a pure action (0, 1, or 2)
-- No mixing: LLM cannot randomize
-- For multiple trials, we query the LLM multiple times (gets different answers)
-- This tests LLM consistency and robustness
-
-### 3. **The Comparison Logic**
 ```
-LLM's payoff:           σ_llm @ U @ σ_c  (vector @ matrix @ vector)
-Best response payoff:   max_i (U[i,:] @ σ_c)  (best single action vs Nash)
-
-Nash gap = BR payoff - LLM payoff
-
-If gap = 0:   LLM played optimally
-If gap > 0:   LLM was suboptimal by this amount
-If gap = 100: LLM could have earned 100 more points
+results/pure_and_mixed_YYYYMMDD_HHMMSS/
 ```
 
-### 4. **Why We Use Nash Column Strategy**
-- **Test hypothesis:** "Can LLM play game-theoretically sound strategies?"
-- **Measuring against Nash** = measuring against best-possible opponent
-- This isolates LLM's strategic understanding from opponent behavior
-- If opponent plays Nash, LLM CANNOT do better than its best response
+If you pass `--overwrite`, the combined run overwrites a fixed folder:
 
-### 5. **The Three Values Explained**
+```
+results/pure_and_mixed_latest/
+├── games.json
+├── trials_pure_actions.json
+├── summary_pure_actions.json
+├── trials_mixed_strategy.json
+└── summary_mixed_strategy.json
+```
 
-| Value | What It Is | How Computed |
-|-------|-----------|--------------|
-| `llm_value` | What the LLM achieved | LLM's action vector @ payoff matrix @ Nash column strategy |
-| `best_response_value` | Best possible against Nash | max over all actions of (action @ payoff matrix @ Nash strategy) |
-| `nash_gap` | Suboptimality metric | Best response value - LLM value |
+- `games.json` stores the payoff matrices and Nash equilibria.
+- Trial files store per-game decisions and gap values.
+- Summary files store aggregate statistics (mean, median, etc.).
 
 ---
 
-## Complete Example (Game 1)
+## 6) Worked Example (2x2 Game)
 
-```
-Game Matrix U:
-  Col0   Col1   Col2
-  ─────────────────────
-  19.73  -68.80 -68.80  ← Action 0
-  19.73  -68.80 -68.80  ← Action 1  
-  -88.38  73.24  20.22  ← Action 2
+Suppose the payoff matrix is:
 
-Nash Equilibrium (computed once):
-  Row player should play: σ_r = [some mixture]
-  Column player should play: σ_c = [0.72, 0.0, 0.28]
+$$
+U = \begin{bmatrix}
+2 & -1 \\
+-3 & 1
+\end{bmatrix}
+$$
 
-Trial 0:
-  LLM is shown the matrix
-  LLM response: "I choose action 0"
-  
-  Computation:
-    LLM strategy:           σ_llm = [1.0, 0.0, 0.0]
-    LLM value:              [1.0, 0.0, 0.0] @ U @ [0.72, 0.0, 0.28]
-                          = 19.73*0.72 - 68.80*0.0 - 68.80*0.28
-                          = 14.21 - 19.26 = -5.05
-    
-    Best response payoffs:
-      BR[0] = 19.73*0.72 - 68.80*0 - 68.80*0.28 = -5.05
-      BR[1] = 19.73*0.72 - 68.80*0 - 68.80*0.28 = -5.05
-      BR[2] = -88.38*0.72 + 73.24*0 + 20.22*0.28 = -57.97
-    
-    Best response value = max{-5.05, -5.05, -57.97} = -5.05
-    Nash gap = -5.05 - (-5.05) = 0.0 ✓ (LLM played optimally!)
+Assume the Nash column strategy is $\sigma_c = [0.75, 0.25]$.
 
-Trial 1 (same game, different LLM response):
-  LLM is shown the same matrix again
-  LLM response: "I choose action 2"  ← Different answer!
-  
-  Computation:
-    LLM strategy:           σ_llm = [0.0, 0.0, 1.0]
-    LLM value:              [0.0, 0.0, 1.0] @ U @ [0.72, 0.0, 0.28]
-                          = -88.38*0.72 + 73.24*0 + 20.22*0.28
-                          = -63.63 + 0 + 5.66 = -57.97
-    
-    Best response value = -5.05 (same as before)
-    Nash gap = -5.05 - (-57.97) = 52.92 ✗ (LLM played poorly!)
-```
+### Pure Action Example
+
+- LLM chooses action 0.
+- LLM value:
+  $$V_{\text{llm}} = U[0,:] \cdot \sigma_c = 2(0.75) + (-1)(0.25) = 1.25$$
+- Best response value:
+  $$V_{\text{br}} = \max_i U[i,:] \cdot \sigma_c = \max(1.25, -2.0) = 1.25$$
+- Nash gap:
+  $$\text{gap} = 1.25 - 1.25 = 0$$
+
+### Mixed Strategy Example
+
+- LLM outputs $\sigma_{\text{llm}} = [0.6, 0.4]$.
+- LLM value:
+  $$V_{\text{llm}} = \sigma_{\text{llm}}^T U \sigma_c = 0.6(1.25) + 0.4(-2.0) = -0.1$$
+- If the Nash value is $v^* = 0.5$, then:
+  $$\text{gap} = 0.5 - (-0.1) = 0.6$$
+
+---
+
+## 7) What This Benchmark Shows (Current Conclusion)
+
+- The LLM is measured against a **fixed Nash opponent**.
+- The Nash gap quantifies how far the LLM is from optimal play.
+- In current runs, **both pure-action and mixed-strategy outputs are far from solving the games**.
+
+This is intentional: the benchmark highlights **strategic gaps**. The next phase is to **fine-tune** models on game-theoretic data so they can approach Nash-quality play.
+
+---
+
+## 8) Next Step: Fine-Tuning Plan (High-Level)
+
+1. Use `games.json` + trial data to build supervised targets.
+2. Fine-tune Llama 3.1 on correct responses (pure best response or Nash-like mixed outputs).
+3. Re-run the benchmark to measure reduced Nash gaps.
 
 ---
 
 ## Summary
 
-**The complete flow:**
-1. **Generate** 100 random 3×3 games
-2. **Setup**: For each game, compute the Nash equilibrium (pure strategy pairs or mixed strategies)
-3. **Key decision**: Column player ALWAYS plays its Nash strategy σ_c
-4. **Each trial**: Query LLM, get one action, compute payoff against σ_c
-5. **Measure**: Compare LLM's payoff to what LLM could have achieved (best response)
-6. **Nash gap** quantifies: How many points LLM lost by not playing optimally
-
-**The key insight:**
-- By fixing column player to Nash strategy, we isolate pure strategic acumen
-- LLM cannot "beat" the opponent through opponent mistakes
-- Nash gap measures true game-theoretic understanding
-- High gap = LLM doesn't understand the strategic structure of the game
+- All games are zero-sum.
+- Opponent always plays Nash.
+- We evaluate two interfaces (pure and mixed) but **do not frame it as a contest**.
+- The current takeaway: **neither interface solves the games yet**.
+- The goal is to **fine-tune** and then re-measure improvements.
