@@ -220,8 +220,7 @@ class TogetherAILLM(LLMInterface):
         
         try:
             import together
-            self.together = together
-            self.together.api_key = self.api_key
+            self.client = together.Together(api_key=self.api_key)
         except ImportError:
             raise ImportError("together required for TogetherAILLM. Install: pip install together")
     
@@ -230,13 +229,17 @@ class TogetherAILLM(LLMInterface):
         prompt = GamePromptFormatter.format_game_as_text(game)
         
         try:
-            response = self.together.Complete.create(
+            response = self.client.completions.create(
                 prompt=prompt,
                 model=self.model,
                 max_tokens=256,
                 temperature=0.7
             )
-            text = response["output"]["choices"][0]["text"]
+            # Extract text from response
+            if hasattr(response, 'choices') and len(response.choices) > 0:
+                text = response.choices[0].text
+            else:
+                text = str(response)
             
             # Try to parse response
             decision = ResponseParser.parse_response(text, game.num_row_actions)

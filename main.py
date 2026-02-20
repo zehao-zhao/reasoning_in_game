@@ -23,7 +23,7 @@ def run_benchmark(
     llm_type: str = "dummy",
     llm_model: str = None,
     parallel: bool = False,
-    num_workers: int = 4
+    num_workers: int = 14
 ):
     """
     Run the benchmark with multiple trials per game.
@@ -55,7 +55,7 @@ def run_benchmark(
         print(f"  Model: {model}")
         llm = OllamaLLM(model=model)
     elif llm_type.lower() == "together":
-        model = llm_model or "meta-llama/Llama-3-70b-chat-hf"
+        model = llm_model or "meta-llama/Meta-Llama-3.1-70B-Instruct-Turbo"
         print(f"  Model: {model}")
         llm = TogetherAILLM(model=model)
     elif llm_type.lower() == "openai":
@@ -69,38 +69,44 @@ def run_benchmark(
     benchmark = Benchmark(llm)
     games_data = benchmark.setup_games(games, verbose=True)
     
-    print(f"\nRunning {num_trials} trials per game{'(parallel with ' + str(num_workers) + ' workers)...' if parallel else '...'}")
+    # Auto-enable parallelization for network-based LLMs (they have network latency)
+    use_parallel = parallel or llm_type.lower() in ["together", "openai"]
+    if use_parallel and not parallel and llm_type.lower() in ["together", "openai"]:
+        print(f"Auto-enabling parallel execution for {llm_type} (network-based LLM)")
     
-    if parallel:
+    print(f"\nRunning {num_trials} trials per game{'(parallel with ' + str(num_workers) + ' workers)...' if use_parallel else '...'}")
+    
+    if use_parallel:
         trial_results, summary = benchmark.run_trials_parallel(num_trials=num_trials, num_workers=num_workers, verbose=True)
     else:
         trial_results, summary = benchmark.run_trials(num_trials=num_trials, verbose=True)
     
-    # Save results
-    Path(output_dir).mkdir(exist_ok=True)
+    # Save results in run-specific folder structure
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    run_dir = Path(output_dir) / f"run_{timestamp}"
+    run_dir.mkdir(parents=True, exist_ok=True)
     
     # Dataset 1: Game mapping (game_id -> payoff matrix, nash equilibrium)
-    games_file = Path(output_dir) / f"games_{timestamp}.json"
+    games_file = run_dir / "games.json"
     games_list = [g.to_dict() for g in games_data]
     with open(games_file, 'w') as f:
         json.dump(games_list, f, indent=2)
     
     # Dataset 2: Trial results (game_id, trial_id, llm_decision, llm_value, br_value, nash_gap)
-    trials_file = Path(output_dir) / f"trials_{timestamp}.json"
+    trials_file = run_dir / "trials.json"
     trials_list = [r.to_dict() for r in trial_results]
     with open(trials_file, 'w') as f:
         json.dump(trials_list, f, indent=2)
     
     # Summary statistics
-    summary_file = Path(output_dir) / f"summary_{timestamp}.json"
+    summary_file = run_dir / "summary.json"
     with open(summary_file, 'w') as f:
         json.dump(summary, f, indent=2)
     
-    print(f"\nDatasets saved:")
-    print(f"  Games: {games_file}")
-    print(f"  Trials: {trials_file}")
-    print(f"  Summary: {summary_file}")
+    print(f"\nDatasets saved in: {run_dir}/")
+    print(f"  ✓ games.json")
+    print(f"  ✓ trials.json")
+    print(f"  ✓ summary.json")
     
     # Print summary
     print("\n" + "="*60)
@@ -135,8 +141,8 @@ if __name__ == "__main__":
                        help="Specific model name (overrides defaults)")
     parser.add_argument("--parallel", action="store_true",
                        help="Use parallel workers for faster LLM queries (useful for network-based LLMs)")
-    parser.add_argument("--num-workers", type=int, default=4,
-                       help="Number of parallel workers (default: 4)")
+    parser.add_argument("--num-workers", type=int, default=14,
+                       help="Number of parallel workers (default: 14 - matches your CPU cores)")
     
     args = parser.parse_args()
     
