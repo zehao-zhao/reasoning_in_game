@@ -182,7 +182,7 @@ class OllamaLLM(LLMInterface):
             response = self.requests.post(
                 f"{self.base_url}/api/generate",
                 json={"model": self.model, "prompt": prompt, "stream": False},
-                timeout=60
+                timeout=300  # 5 minute timeout for model inference
             )
             response.raise_for_status()
             text = response.json().get("response", "")

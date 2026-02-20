@@ -20,7 +20,7 @@ def run_benchmark(
     seed: int = None,
     output_dir: str = "results",
     llm_seed: int = None,
-    llm_type: str = "ollama",
+    llm_type: str = "dummy",
     llm_model: str = None
 ):
     """
@@ -120,9 +120,9 @@ if __name__ == "__main__":
     parser.add_argument("--seed", type=int, default=None, help="Random seed for game generation")
     parser.add_argument("--output-dir", type=str, default="results", help="Output directory (default: results)")
     parser.add_argument("--llm-seed", type=int, default=None, help="Random seed for LLM")
-    parser.add_argument("--llm-type", type=str, default="ollama", 
+    parser.add_argument("--llm-type", type=str, default="dummy", 
                        choices=["dummy", "ollama", "together", "openai"],
-                       help="LLM backend type (default: ollama)")
+                       help="LLM backend type (default: dummy)")
     parser.add_argument("--llm-model", type=str, default=None,
                        help="Specific model name (overrides defaults)")
     
