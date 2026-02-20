@@ -79,7 +79,8 @@ class GamePromptFormatter:
         lines.append("Your actions: " + ", ".join(game.action_names))
         lines.append("Opponent has " + str(game.num_col_actions) + " possible actions")
         lines.append("")
-        lines.append("What action do you choose? Respond with just the action number (0, 1, or 2).")
+        lines.append("IMPORTANT: The opponent is playing their Nash equilibrium mixed strategy.")
+        lines.append("What single action do you choose? Respond with just the action number (0, 1, or 2).")
         
         return "\n".join(lines)
     
@@ -110,7 +111,8 @@ class GamePromptFormatter:
         lines.append("Your actions: " + ", ".join(game.action_names))
         lines.append("Opponent has " + str(game.num_col_actions) + " possible actions")
         lines.append("")
-        lines.append("Provide your mixed strategy as a JSON object with action probabilities.")
+        lines.append("IMPORTANT: The opponent is playing their Nash equilibrium mixed strategy.")
+        lines.append("Provide YOUR mixed strategy (probability distribution) as a JSON object.")
         lines.append("The probabilities must sum to 1.0 and be non-negative.")
         lines.append("")
         lines.append('Example response format:')
