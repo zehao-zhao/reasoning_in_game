@@ -262,6 +262,42 @@ python main.py --llm-type openai --llm-model gpt-3.5-turbo --seed 42
 - **Cons**: Costs per request (~$0.001-0.01 per game)
 - **Setup**: Get API key from https://platform.openai.com
 
+
+## Tiered Research Suite (Model Tiers × Game Buckets)
+
+To run a controlled benchmark matrix over game families and model tiers (A/B/C), use:
+
+```bash
+export TOGETHER_API_KEY="your_key_here"
+python run_tiered_research_suite.py --num-games-per-bucket 30 --num-trials 20 --seeds 42
+```
+
+You can now control providers and game-family subset explicitly:
+
+```bash
+export TOGETHER_API_KEY="your_key_here"
+export OPENAI_API_KEY="your_key_here"
+python run_tiered_research_suite.py   --providers together openai   --bucket-ids 2x2_lowVar_pure 3x3_midVar_mixed 4x4_highVar_mixed   --num-games-per-bucket 8   --num-trials 4   --seeds 42   --openai-model-tiers-json '{"A":["gpt-4o"],"B":["gpt-4o-mini"],"C":[]}'
+```
+
+Outputs are written to:
+
+```
+results/tiered_suite_YYYYMMDD_HHMMSS/
+```
+
+Key artifacts:
+- `big_table_all_runs.csv`: one row per seed × provider × bucket × model × mode
+- `big_table_aggregated.csv`: means/std across seeds (main report table)
+- `big_table_aggregated.md`: markdown version of the aggregated table
+- `suite_metadata.json`: controlled variables (providers, seeds, temperature, buckets, tier definitions)
+
+For a local dry-run without API calls:
+
+```bash
+python run_tiered_research_suite.py --use-dummy --num-games-per-bucket 5 --num-trials 3 --seeds 42
+```
+
 ## Testing
 
 Run unit tests:

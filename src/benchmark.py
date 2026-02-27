@@ -18,7 +18,8 @@ class TrialResult:
     llm_value: float
     best_response_value: float
     nash_gap: float
-    
+    decision_source: str = "unknown"
+
     def to_dict(self) -> Dict[str, Any]:
         """Convert to dictionary for logging."""
         result_dict = asdict(self)
@@ -222,6 +223,7 @@ class Benchmark:
             for trial_id in range(num_trials):
                 # Get LLM decision
                 llm_decision = self.llm.query(game)
+                metadata = self.llm.get_last_query_metadata() if hasattr(self.llm, "get_last_query_metadata") else {"source": "unknown"}
                 
                 # Compute LLM value against Nash opponent
                 if isinstance(llm_decision, int):
@@ -247,7 +249,8 @@ class Benchmark:
                     llm_decision=llm_decision,
                     llm_value=float(llm_value),
                     best_response_value=float(br_value),
-                    nash_gap=float(nash_gap)
+                    nash_gap=float(nash_gap),
+                    decision_source=metadata.get("source", "unknown")
                 )
                 trial_results.append(trial_result)
         
@@ -256,6 +259,12 @@ class Benchmark:
         llm_values = np.array([r.llm_value for r in trial_results])
         br_values = np.array([r.best_response_value for r in trial_results])
         
+
+        source_counts = {}
+        for r in trial_results:
+            source_counts[r.decision_source] = source_counts.get(r.decision_source, 0) + 1
+        parsed_count = source_counts.get("parsed", 0) + source_counts.get("dummy_random", 0)
+
         summary = {
             "num_games": len(self.games_data),
             "num_trials_per_game": num_trials,
@@ -266,7 +275,9 @@ class Benchmark:
             "min_nash_gap": float(np.min(nash_gaps)),
             "max_nash_gap": float(np.max(nash_gaps)),
             "mean_llm_value": float(np.mean(llm_values)),
-            "mean_br_value": float(np.mean(br_values))
+            "mean_br_value": float(np.mean(br_values)),
+            "decision_source_counts": source_counts,
+            "parse_success_rate": float(parsed_count / len(trial_results)) if trial_results else 0.0
         }
         
         return trial_results, summary
@@ -296,6 +307,7 @@ class Benchmark:
             
             # Get LLM decision
             llm_decision = self.llm.query(game)
+            metadata = self.llm.get_last_query_metadata() if hasattr(self.llm, "get_last_query_metadata") else {"source": "unknown"}
             
             # Compute LLM value against Nash opponent
             if isinstance(llm_decision, int):
@@ -315,7 +327,8 @@ class Benchmark:
                 llm_decision=llm_decision,
                 llm_value=float(llm_value),
                 best_response_value=float(br_value),
-                nash_gap=float(nash_gap)
+                nash_gap=float(nash_gap),
+                decision_source=metadata.get("source", "unknown")
             )
         
         # Create list of all (game_data, trial_id) pairs
@@ -345,6 +358,12 @@ class Benchmark:
         llm_values = np.array([r.llm_value for r in trial_results])
         br_values = np.array([r.best_response_value for r in trial_results])
         
+
+        source_counts = {}
+        for r in trial_results:
+            source_counts[r.decision_source] = source_counts.get(r.decision_source, 0) + 1
+        parsed_count = source_counts.get("parsed", 0) + source_counts.get("dummy_random", 0)
+
         summary = {
             "num_games": len(self.games_data),
             "num_trials_per_game": num_trials,
@@ -355,7 +374,9 @@ class Benchmark:
             "min_nash_gap": float(np.min(nash_gaps)),
             "max_nash_gap": float(np.max(nash_gaps)),
             "mean_llm_value": float(np.mean(llm_values)),
-            "mean_br_value": float(np.mean(br_values))
+            "mean_br_value": float(np.mean(br_values)),
+            "decision_source_counts": source_counts,
+            "parse_success_rate": float(parsed_count / len(trial_results)) if trial_results else 0.0
         }
         
         return trial_results, summary
@@ -391,6 +412,7 @@ class Benchmark:
             for trial_id in range(num_trials):
                 # Get LLM mixed strategy
                 llm_mixed_strategy = self.llm.query_mixed_strategy(game)
+                metadata = self.llm.get_last_query_metadata() if hasattr(self.llm, "get_last_query_metadata") else {"source": "unknown"}
                 
                 # Normalize to ensure sum = 1
                 llm_mixed_strategy = llm_mixed_strategy / (llm_mixed_strategy.sum() + 1e-10)
@@ -407,7 +429,8 @@ class Benchmark:
                     llm_decision=llm_mixed_strategy,  # Store the mixed strategy
                     llm_value=float(llm_value),
                     best_response_value=float(nash_value),  # Store Nash value as "best response" for comparison
-                    nash_gap=float(nash_gap)
+                    nash_gap=float(nash_gap),
+                    decision_source=metadata.get("source", "unknown")
                 )
                 trial_results.append(trial_result)
         
@@ -416,6 +439,12 @@ class Benchmark:
         llm_values = np.array([r.llm_value for r in trial_results])
         nash_values = np.array([r.best_response_value for r in trial_results])
         
+
+        source_counts = {}
+        for r in trial_results:
+            source_counts[r.decision_source] = source_counts.get(r.decision_source, 0) + 1
+        parsed_count = source_counts.get("parsed", 0) + source_counts.get("dummy_random", 0)
+
         summary = {
             "num_games": len(self.games_data),
             "num_trials_per_game": num_trials,
@@ -427,7 +456,9 @@ class Benchmark:
             "min_nash_gap": float(np.min(nash_gaps)),
             "max_nash_gap": float(np.max(nash_gaps)),
             "mean_llm_value": float(np.mean(llm_values)),
-            "mean_nash_value": float(np.mean(nash_values))
+            "mean_nash_value": float(np.mean(nash_values)),
+            "decision_source_counts": source_counts,
+            "parse_success_rate": float(parsed_count / len(trial_results)) if trial_results else 0.0
         }
         
         return trial_results, summary
@@ -462,6 +493,7 @@ class Benchmark:
             
             # Get LLM mixed strategy
             llm_mixed_strategy = self.llm.query_mixed_strategy(game)
+            metadata = self.llm.get_last_query_metadata() if hasattr(self.llm, "get_last_query_metadata") else {"source": "unknown"}
             llm_mixed_strategy = llm_mixed_strategy / (llm_mixed_strategy.sum() + 1e-10)
             
             # Compute LLM value
@@ -476,7 +508,8 @@ class Benchmark:
                 llm_decision=llm_mixed_strategy,
                 llm_value=float(llm_value),
                 best_response_value=float(nash_value),
-                nash_gap=float(nash_gap)
+                nash_gap=float(nash_gap),
+                decision_source=metadata.get("source", "unknown")
             )
         
         # Create list of all (game_data, trial_id) pairs
@@ -506,6 +539,12 @@ class Benchmark:
         llm_values = np.array([r.llm_value for r in trial_results])
         nash_values = np.array([r.best_response_value for r in trial_results])
         
+
+        source_counts = {}
+        for r in trial_results:
+            source_counts[r.decision_source] = source_counts.get(r.decision_source, 0) + 1
+        parsed_count = source_counts.get("parsed", 0) + source_counts.get("dummy_random", 0)
+
         summary = {
             "num_games": len(self.games_data),
             "num_trials_per_game": num_trials,
@@ -517,7 +556,9 @@ class Benchmark:
             "min_nash_gap": float(np.min(nash_gaps)),
             "max_nash_gap": float(np.max(nash_gaps)),
             "mean_llm_value": float(np.mean(llm_values)),
-            "mean_nash_value": float(np.mean(nash_values))
+            "mean_nash_value": float(np.mean(nash_values)),
+            "decision_source_counts": source_counts,
+            "parse_success_rate": float(parsed_count / len(trial_results)) if trial_results else 0.0
         }
         
         return trial_results, summary
